@@ -107,7 +107,7 @@ def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
         cur_date = roll_data.index[i]
         concat_lst.append(get_beta(sub[universe.loc[cur_date]],exp_weight_months).unstack(0))
     beta_df = pd.DataFrame(concat_lst,index=roll_data.index)
-    beta_df.to_csv(f'ffloadings_halflife{exp_weight_months}_TOP{universe_N}.csv')
+    beta_df.to_csv(f'data/ffloadings_halflife{exp_weight_months}_TOP{universe_N}.csv')
 
     systematic_returns = None
     for col in ['Mkt-RF','SMB','HML']:
@@ -119,8 +119,8 @@ def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
     systematic_returns = systematic_returns.add(ff_factors['RF'],axis=0)
     specific_returns = data['ret'] - systematic_returns
 
-    systematic_returns.to_csv(f'systematic_returns_halflife{exp_weight_months}_TOP{universe_N}.csv')
-    specific_returns.to_csv(f'specific_returns_halflife{exp_weight_months}_TOP{universe_N}.csv')
+    systematic_returns.to_csv(f'data/systematic_returns_halflife{exp_weight_months}_TOP{universe_N}.csv')
+    specific_returns.to_csv(f'data/specific_returns_halflife{exp_weight_months}_TOP{universe_N}.csv')
     
 
 
