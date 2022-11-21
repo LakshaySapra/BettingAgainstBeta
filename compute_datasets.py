@@ -61,7 +61,7 @@ def get_universe(N=500):
     universe.to_csv(f'data/TOP{N}_universe.csv')
 
 def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
-    ff_factors = pd.read_csv('data/F-F_Research_Data_Factors_Monthly.csv')
+    ff_factors = pd.read_csv('data/F-F_Research_Data_Factors_Monthly.csv',index_col=0)
     crsp_m = pd.read_csv('data/crspmsf.csv',index_col=0)
     crsp_m['permno'] = crsp_m['permno'].astype(int)
     crsp_m['mktcap'] = abs(crsp_m['shrout']*crsp_m['altprc'])
@@ -101,14 +101,16 @@ def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
     def get_beta(sub,exp_halflife=None):
         return sub.apply(lambda ser: compute_beta(ser-ff_factors['RF'],ff_factors[['Mkt-RF','SMB','HML']],exp_halflife))
 
-    roll_data = data['ret'].loc['1986-02-01':].iloc[:]
+    roll_data = data['ret'].loc['1970-01-01':]
     concat_lst = []
     for i,sub in tqdm(enumerate(roll_data.rolling(rolling_window_months,axis=0)),total=roll_data.shape[0]):
         cur_date = roll_data.index[i]
         concat_lst.append(get_beta(sub[universe.loc[cur_date]],exp_weight_months).unstack(0))
     beta_df = pd.DataFrame(concat_lst,index=roll_data.index)
-    beta_df.to_csv(f'data/ffloadings_halflife{exp_weight_months}_TOP{universe_N}.csv')
+    beta_df.to_pickle(f'data/ffloadings_halflife{exp_weight_months}_TOP{universe_N}.pkl',protocol=0)
 
+    beta_df.index = pd.to_datetime(beta_df.index)
+    ff_factors.index = pd.to_datetime(ff_factors.index)
     systematic_returns = None
     for col in ['Mkt-RF','SMB','HML']:
         tmp = beta_df.reorder_levels([1,0],axis=1)[col].multiply(ff_factors[col],axis=0).tail(20)
@@ -117,10 +119,10 @@ def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
         else:
             systematic_returns += tmp
     systematic_returns = systematic_returns.add(ff_factors['RF'],axis=0)
-    specific_returns = data['ret'] - systematic_returns
+    specific_returns = data['ret'].subtract(systematic_returns,axis=0)
 
-    systematic_returns.to_csv(f'data/systematic_returns_halflife{exp_weight_months}_TOP{universe_N}.csv')
-    specific_returns.to_csv(f'data/specific_returns_halflife{exp_weight_months}_TOP{universe_N}.csv')
+    systematic_returns.to_pickle(f'data/systematic_returns_halflife{exp_weight_months}_TOP{universe_N}.pkl',protocol=0)
+    specific_returns.to_pickle(f'data/specific_returns_halflife{exp_weight_months}_TOP{universe_N}.pkl',protocol=0)
     
 
 
