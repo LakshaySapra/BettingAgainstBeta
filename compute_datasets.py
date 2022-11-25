@@ -6,7 +6,7 @@ from tqdm.auto import tqdm
 
 def get_fama_french_monthly():
     ff_factors = pd.read_csv('data/F-F_Research_Data_Factors.csv',index_col=0,header=3).iloc[:-100].astype(float)/100
-    ff_factors.index = pd.to_datetime(ff_factors.index,format='%Y%m') + pd.tseries.offsets.MonthEnd()
+    ff_factors.index = pd.to_datetime(ff_factors.index,format='%Y%m') + pd.tseries.offsets.BMonthEnd()
     ff_factors.to_csv('data/F-F_Research_Data_Factors_Monthly.csv')
 
 def get_portfolio_excess_returns():
@@ -44,7 +44,7 @@ def get_portfolio_excess_returns():
 
     portfolio_excess_ret = returndata.groupby('date').apply(lambda x: get_portfolio_excess_ret(x, N))
     returndata = pd.merge(returndata, portfolio_excess_ret.reset_index().rename(columns={0: 'benchmark_excess_ret'}), on='date', how='left')
-    portfolio_excess_ret.index = pd.to_datetime(portfolio_excess_ret.index,format='%Y%m') + pd.tseries.offsets.MonthEnd()
+    portfolio_excess_ret.index = pd.to_datetime(portfolio_excess_ret.index,format='%Y%m') + pd.tseries.offsets.BMonthEnd()
     portfolio_excess_ret = portfolio_excess_ret.reset_index().rename(columns={0: 'benchmark_excess_ret'})
 
     portfolio_excess_ret.to_csv('data/portfolio_excess_ret.csv')
@@ -55,19 +55,20 @@ def get_universe(N=500):
     crsp_m['mktcap'] = abs(crsp_m['shrout']*crsp_m['altprc'])
     returndata = crsp_m[['date','permno','ret','mktcap']]
     data = returndata.pivot('date','permno')
-    data.index = pd.to_datetime(data.index)
+    data.index = pd.to_datetime(data.index) + pd.tseries.offsets.BMonthBegin() + pd.tseries.offsets.BMonthEnd()
     universe = data['mktcap'].apply(lambda ser: ser.sort_values(ascending=False)[:N].index.to_numpy(),axis=1)
     universe = pd.DataFrame(list(universe.values),index=universe.index)
     universe.to_csv(f'data/TOP{N}_universe.csv')
 
 def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
     ff_factors = pd.read_csv('data/F-F_Research_Data_Factors_Monthly.csv',index_col=0)
+    ff_factors.index = pd.to_datetime(ff_factors.index)
     crsp_m = pd.read_csv('data/crspmsf.csv',index_col=0)
     crsp_m['permno'] = crsp_m['permno'].astype(int)
     crsp_m['mktcap'] = abs(crsp_m['shrout']*crsp_m['altprc'])
     returndata = crsp_m[['date','permno','ret','mktcap']]
     data = returndata.pivot('date','permno')
-    data.index = pd.to_datetime(data.index)
+    data.index = pd.to_datetime(data.index) + pd.tseries.offsets.BMonthBegin() + pd.tseries.offsets.BMonthEnd()
     
     universe = pd.read_csv(f'data/TOP{universe_N}_universe.csv',parse_dates=[0],index_col=0)
 
@@ -93,13 +94,13 @@ def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
             if exp_halflife is not None:
                 w = weights.reindex_like(stock).values
                 X,y = X*np.sqrt(w[:,None]), y*np.sqrt(w)
-            betas = np.linalg.lstsq(X,y)[0]
+            betas = np.linalg.lstsq(X,y,rcond=None)[0]
         else:
             betas = [np.nan]*(len(factors.columns)+1)
         return pd.Series(betas,index=['alpha'] + list(factors.columns))
     
     def get_beta(sub,exp_halflife=None):
-        return sub.apply(lambda ser: compute_beta(ser-ff_factors['RF'],ff_factors[['Mkt-RF','SMB','HML']],exp_halflife))
+        return sub.apply(lambda ser: compute_beta(ser.subtract(ff_factors['RF'],axis=0),ff_factors[['Mkt-RF','SMB','HML']],exp_halflife))
 
     roll_data = data['ret'].loc['1970-01-01':]
     concat_lst = []
@@ -113,13 +114,16 @@ def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
     ff_factors.index = pd.to_datetime(ff_factors.index)
     systematic_returns = None
     for col in ['Mkt-RF','SMB','HML']:
-        tmp = beta_df.reorder_levels([1,0],axis=1)[col].multiply(ff_factors[col],axis=0).tail(20)
+        a,b = beta_df.reorder_levels([1,0],axis=1)[col].align(ff_factors[col],axis=0,join='inner')
+        tmp = a.multiply(b,axis=0)
         if systematic_returns is None:
             systematic_returns = tmp
         else:
             systematic_returns += tmp
-    systematic_returns = systematic_returns.add(ff_factors['RF'],axis=0)
-    specific_returns = data['ret'].subtract(systematic_returns,axis=0)
+    systematic_returns,b = systematic_returns.align(ff_factors['RF'],axis=0,join='inner')
+    systematic_returns = systematic_returns.add(b,axis=0)
+    a,b = data['ret'].align(systematic_returns,axis=0,join='inner')
+    specific_returns = a.subtract(b,axis=0)
 
     systematic_returns.to_pickle(f'data/systematic_returns_halflife{exp_weight_months}_TOP{universe_N}.pkl',protocol=0)
     specific_returns.to_pickle(f'data/specific_returns_halflife{exp_weight_months}_TOP{universe_N}.pkl',protocol=0)
@@ -136,4 +140,4 @@ if __name__ == "__main__":
     print("TOP2000 Universe...")
     get_universe(2000)
     print("Fama French Loadings, Systematic and Specific Returns...")
-    ff_loadings()
+    ff_loadings(universe_N=500)
