@@ -55,7 +55,7 @@ def get_universe(N=500):
     crsp_m['mktcap'] = abs(crsp_m['shrout']*crsp_m['altprc'])
     returndata = crsp_m[['date','permno','ret','mktcap']]
     data = returndata.pivot('date','permno')
-    data.index = pd.to_datetime(data.index) + pd.tseries.offsets.BMonthBegin() + pd.tseries.offsets.BMonthEnd()
+    data.index = pd.to_datetime(data.index) - pd.tseries.offsets.MonthBegin() + pd.tseries.offsets.BMonthEnd()
     universe = data['mktcap'].apply(lambda ser: ser.sort_values(ascending=False)[:N].index.to_numpy(),axis=1)
     universe = pd.DataFrame(list(universe.values),index=universe.index)
     universe.to_csv(f'data/TOP{N}_universe.csv')
@@ -68,7 +68,7 @@ def ff_loadings(exp_weight_months=36,rolling_window_months=60,universe_N=2000):
     crsp_m['mktcap'] = abs(crsp_m['shrout']*crsp_m['altprc'])
     returndata = crsp_m[['date','permno','ret','mktcap']]
     data = returndata.pivot('date','permno')
-    data.index = pd.to_datetime(data.index) + pd.tseries.offsets.BMonthBegin() + pd.tseries.offsets.BMonthEnd()
+    data.index = pd.to_datetime(data.index) - pd.tseries.offsets.MonthBegin() + pd.tseries.offsets.BMonthEnd()
     
     universe = pd.read_csv(f'data/TOP{universe_N}_universe.csv',parse_dates=[0],index_col=0)
 
@@ -140,4 +140,4 @@ if __name__ == "__main__":
     print("TOP2000 Universe...")
     get_universe(2000)
     print("Fama French Loadings, Systematic and Specific Returns...")
-    ff_loadings(universe_N=500)
+    ff_loadings(universe_N=2000,exp_weight_months=36)
